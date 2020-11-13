@@ -18,7 +18,7 @@ func init() {
 // EtcdDiscovery is a etcd service discovery.
 // It always returns the registered servers in etcd.
 type EtcdDiscovery struct {
-	basePath string
+	basePath string //   /xes_xueyan_hudong/Classroom
 	kv       store.Store
 	pairs    []*KVPair
 	chans    []chan []*KVPair
@@ -33,6 +33,7 @@ type EtcdDiscovery struct {
 }
 
 // NewEtcdDiscovery returns a new EtcdDiscovery.
+// 返回一个新的EtcdDiscovery
 func NewEtcdDiscovery(basePath string, servicePath string, etcdAddr []string, options *store.Config) ServiceDiscovery {
 	kv, err := libkv.NewStore(store.ETCD, etcdAddr, options)
 	if err != nil {
@@ -44,15 +45,17 @@ func NewEtcdDiscovery(basePath string, servicePath string, etcdAddr []string, op
 }
 
 // NewEtcdDiscoveryStore return a new EtcdDiscovery with specified store.
+// 返回一个新的有指定的store的EtcdDiscovery
 func NewEtcdDiscoveryStore(basePath string, kv store.Store) ServiceDiscovery {
 	if len(basePath) > 1 && strings.HasSuffix(basePath, "/") {
+		//如果有/后缀，就将/删除？ 比如 /xes_xueyan_hudong/Classroom/ 会改成 /xes_xueyan_hudong/Classroom
 		basePath = basePath[:len(basePath)-1]
 	}
 
 	d := &EtcdDiscovery{basePath: basePath, kv: kv}
 	d.stopCh = make(chan struct{})
 
-	ps, err := kv.List(basePath)
+	ps, err := kv.List(basePath) //应该是要去找 /xes_xueyan_hudong/Classroom 下的机器列表
 	if err != nil {
 		log.Infof("cannot get services of from registry: %v, err: %v", basePath, err)
 		panic(err)
@@ -75,7 +78,7 @@ func NewEtcdDiscoveryStore(basePath string, kv store.Store) ServiceDiscovery {
 				}
 			}
 		}
-		k := strings.TrimPrefix(p.Key, prefix)
+		k := strings.TrimPrefix(p.Key, prefix) //这时候 k 应该是个 ip:port
 		pair := &KVPair{Key: k, Value: string(p.Value)}
 		if d.filter != nil && !d.filter(pair) {
 			continue
@@ -90,6 +93,7 @@ func NewEtcdDiscoveryStore(basePath string, kv store.Store) ServiceDiscovery {
 }
 
 // NewEtcdDiscoveryTemplate returns a new EtcdDiscovery template.
+// 我看我们这边就是这么用的，先用它创建一个模板，然后调用discovery.Clone
 func NewEtcdDiscoveryTemplate(basePath string, etcdAddr []string, options *store.Config) ServiceDiscovery {
 	if len(basePath) > 1 && strings.HasSuffix(basePath, "/") {
 		basePath = basePath[:len(basePath)-1]

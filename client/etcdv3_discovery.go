@@ -17,8 +17,10 @@ func init() {
 
 // EtcdV3Discovery is a etcd service discovery.
 // It always returns the registered servers in etcd.
+// EtcdV3Discovery 是一个 etcd 发现服务。
+// 它总是返回注册到etcd中的registered
 type EtcdV3Discovery struct {
-	basePath string
+	basePath string //   /xes_xueyan_hudong/Classroom
 	kv       store.Store
 	pairs    []*KVPair
 	chans    []chan []*KVPair
@@ -33,8 +35,9 @@ type EtcdV3Discovery struct {
 }
 
 // NewEtcdV3Discovery returns a new EtcdV3Discovery.
+// 返回一个新的EtcdV3Discovery
 func NewEtcdV3Discovery(basePath string, servicePath string, etcdAddr []string, options *store.Config) ServiceDiscovery {
-	kv, err := libkv.NewStore(etcd.ETCDV3, etcdAddr, options)
+	kv, err := libkv.NewStore(etcd.ETCDV3, etcdAddr, options) //就是执行 etcdv3.go 的 New 函数
 	if err != nil {
 		log.Infof("cannot create store: %v", err)
 		panic(err)
@@ -44,23 +47,27 @@ func NewEtcdV3Discovery(basePath string, servicePath string, etcdAddr []string, 
 }
 
 // NewEtcdV3DiscoveryStore return a new EtcdV3Discovery with specified store.
+// 返回一个新的有指定的store的EtcdV3Discovery
 func NewEtcdV3DiscoveryStore(basePath string, kv store.Store) ServiceDiscovery {
 	if len(basePath) > 1 && strings.HasSuffix(basePath, "/") {
+		//如果有/后缀，就将/删除？ 比如 /xes_xueyan_hudong/Classroom/ 会改成 /xes_xueyan_hudong/Classroom
 		basePath = basePath[:len(basePath)-1]
 	}
 
 	d := &EtcdV3Discovery{basePath: basePath, kv: kv}
 	d.stopCh = make(chan struct{})
 
-	ps, err := kv.List(basePath)
+	//这里去找了 以 /xes_xueyan_hudong/Classroom 为前缀的所有的key，然后返回了所有的key value 对
+	ps, err := kv.List(basePath) //应该是要去找 /xes_xueyan_hudong/Classroom 下的机器列表
 	if err != nil {
 		log.Errorf("cannot get services of from registry: %v, err: %v", basePath, err)
 		panic(err)
 	}
 	pairs := make([]*KVPair, 0, len(ps))
 	var prefix string
-	for _, p := range ps {
+	for _, p := range ps { //遍历key value 对，放在pairs中
 		if prefix == "" {
+			//这个if else就是获取p.Key的前缀（/xes_xueyan_hudong/Classroom/ 或者 xes_xueyan_hudong/Classroom/）
 			if strings.HasPrefix(p.Key, "/") {
 				if strings.HasPrefix(d.basePath, "/") {
 					prefix = d.basePath + "/"
@@ -78,12 +85,13 @@ func NewEtcdV3DiscoveryStore(basePath string, kv store.Store) ServiceDiscovery {
 		if p.Key == prefix[:len(prefix)-1] {
 			continue
 		}
-		k := strings.TrimPrefix(p.Key, prefix)
+		//p.Key过滤掉前缀，原来应该是/xes_xueyan_hudong/Classroom/127.0.0.1:19001 ，去掉前缀后 127.0.0.1:19001
+		k := strings.TrimPrefix(p.Key, prefix) //这时候 k 应该是个 ip:port
 		pair := &KVPair{Key: k, Value: string(p.Value)}
 		if d.filter != nil && !d.filter(pair) {
 			continue
 		}
-		pairs = append(pairs, pair)
+		pairs = append(pairs, pair) //填充服务发现的列表
 	}
 	d.pairs = pairs
 	d.RetriesAfterWatchFailed = -1
@@ -161,6 +169,7 @@ rewatch:
 
 		retry := d.RetriesAfterWatchFailed
 		for d.RetriesAfterWatchFailed < 0 || retry >= 0 {
+			//watchTree 里面启动了个协程，去 watch 以 /xes_xueyan_hudong/Classroom 为前缀的所有的key。然后将watch的变化放进 c 这个chan中
 			c, err = d.kv.WatchTree(d.basePath, nil)
 			if err != nil {
 				if d.RetriesAfterWatchFailed > 0 {
@@ -191,7 +200,7 @@ rewatch:
 			case <-d.stopCh:
 				log.Info("discovery has been closed")
 				return
-			case ps := <-c:
+			case ps := <-c: //这里阻塞，循环取c，有变化就更新全部列表。
 				if ps == nil {
 					log.Warnf("rewatch %s", d.basePath)
 					goto rewatch
@@ -225,7 +234,7 @@ rewatch:
 					}
 					pairs = append(pairs, pair)
 				}
-				d.pairs = pairs
+				d.pairs = pairs //更新了服务发现列表
 
 				d.mu.Lock()
 				for _, ch := range d.chans {
@@ -236,7 +245,7 @@ rewatch:
 						}()
 
 						select {
-						case ch <- pairs:
+						case ch <- pairs: //将发现的列表放进chan中
 						case <-time.After(time.Minute):
 							log.Warn("chan is full and new change has been dropped")
 						}
